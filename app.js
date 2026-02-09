@@ -70,7 +70,9 @@ const autoCorrelate = (buf, sampleRate) => {
         rms += val * val;
     }
     rms = Math.sqrt(rms / SIZE);
-    if (rms < 0.01) return -1;
+    
+    // Lowered threshold to 0.002 to detect quiet bass notes better
+    if (rms < 0.002) return -1;
 
     let r1 = 0, r2 = SIZE - 1, thres = 0.2;
     for (let i = 0; i < SIZE / 2; i++) {
@@ -388,11 +390,24 @@ const TunerApp = () => {
         if (audioContextRef.current) return;
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // Setup Audio Context
             audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContextRef.current.createMediaStreamSource(stream);
+            
+            // Create Low Pass Filter (Essential for Bass detection)
+            const lowPass = audioContextRef.current.createBiquadFilter();
+            lowPass.type = "lowpass";
+            lowPass.frequency.value = 1000; // Cut off high harmonics
+            
+            // Create Analyser
             analyserRef.current = audioContextRef.current.createAnalyser();
-            analyserRef.current.fftSize = 2048;
-            const microphone = audioContextRef.current.createMediaStreamSource(stream);
-            microphone.connect(analyserRef.current);
+            analyserRef.current.fftSize = 4096; // Increased from 2048 for better low-end resolution
+            
+            // Connect: Source -> Filter -> Analyser
+            source.connect(lowPass);
+            lowPass.connect(analyserRef.current);
+
             micStreamRef.current = stream;
             setIsListening(true);
             requestRef.current = requestAnimationFrame(updatePitch);
@@ -483,10 +498,10 @@ const TunerApp = () => {
                 </div>
             </div>
 
-            {/* RIGHT PANEL: Controls (Reordered) */}
+            {/* RIGHT PANEL: Controls */}
             <div className="flex-none w-full landscape:w-80 bg-zinc-900 border-t landscape:border-t-0 landscape:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20 overflow-y-auto">
                 
-                {/* START BUTTON (Now at Top) */}
+                {/* START BUTTON (Top) */}
                 <div className="mb-2 pb-2 border-b border-zinc-800">
                     <button 
                         onClick={toggleMic}
