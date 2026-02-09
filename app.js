@@ -62,7 +62,9 @@ const autoCorrelate = (buf, sampleRate) => {
 // --- VISUAL COMPONENTS ---
 
 const StrobeBand = ({ speed, direction }) => {
-    const duration = speed === 0 ? '0s' : `${1 / Math.abs(speed)}s`;
+    // If speed is 0, no animation. 
+    // Otherwise calculate duration. Higher speed = lower duration.
+    const duration = speed === 0 ? '0s' : `${Math.max(0.1, 1 / Math.abs(speed))}s`;
     const animationName = direction === 'sharp' ? 'strobe-spin-right' : 'strobe-spin-left';
     
     const style = {
@@ -83,7 +85,6 @@ const ChromaticNeedle = ({ cents }) => {
     const color = isTuned ? 'text-green-400' : 'text-red-400';
     
     return (
-        // Use ViewBox-like scaling with percentage heights to fit any container
         <div className="relative w-full h-full max-h-[40vh] aspect-[2/1] flex justify-center items-end overflow-hidden">
             <div className="absolute bottom-0 w-full h-full border-t-2 border-zinc-600 rounded-t-full opacity-30"></div>
             <div className="absolute bottom-0 w-1 h-[15%] bg-zinc-500"></div>
@@ -115,7 +116,6 @@ const PolyphonicDisplay = ({ detectedFreq, refFreq }) => {
                     isTuned = Math.abs(cents) < 5;
                 }
 
-                // Map cents to translation percentage (-50% to 50%)
                 const transY = isActive ? Math.max(-45, Math.min(45, cents)) * -1 : 0;
                 
                 return (
@@ -152,11 +152,21 @@ const TunerApp = () => {
         frequency: 0 
     });
 
+    // Refs
     const audioContextRef = useRef(null);
     const analyserRef = useRef(null);
     const micStreamRef = useRef(null);
     const requestRef = useRef(null);
     const wakeLockRef = useRef(null);
+    
+    // CRITICAL FIX: Keep refFreq in a Ref so the animation loop sees the latest value
+    const refFreqRef = useRef(440);
+
+    // Sync Ref with State
+    useEffect(() => {
+        refFreqRef.current = refFreq;
+    }, [refFreq]);
+
 
     // --- WAKE LOCK LOGIC ---
     const requestWakeLock = useCallback(async () => {
@@ -200,11 +210,14 @@ const TunerApp = () => {
         const frequency = autoCorrelate(buffer, audioContextRef.current.sampleRate);
 
         if (frequency !== -1) {
-            const noteNum = 12 * (Math.log(frequency / refFreq) / Math.log(2)) + 69;
+            // READ FROM REF, NOT STATE
+            const currentRefFreq = refFreqRef.current;
+
+            const noteNum = 12 * (Math.log(frequency / currentRefFreq) / Math.log(2)) + 69;
             const noteIndex = Math.round(noteNum);
             const noteName = NOTE_STRINGS[noteIndex % 12];
             const octave = Math.floor(noteIndex / 12) - 1;
-            const perfectFreq = refFreq * Math.pow(2, (noteIndex - 69) / 12);
+            const perfectFreq = currentRefFreq * Math.pow(2, (noteIndex - 69) / 12);
             const cents = 1200 * Math.log2(frequency / perfectFreq);
 
             setTuningData({ note: noteName, octave: octave, cents: cents, frequency: frequency });
@@ -251,23 +264,21 @@ const TunerApp = () => {
     const strobeSpeed = (tuningData.cents / 50); 
     const stepButtonStyle = "flex-1 h-full min-h-[3rem] flex items-center justify-center bg-zinc-800 rounded-md text-zinc-400 hover:text-white active:scale-95 transition-all cursor-pointer select-none";
 
+    // Layout Helpers
+    // We use CSS Grid/Flex combos to ensure 100% viewport coverage without scrolling
     return (
-        // MAIN CONTAINER: Full Screen, Hidden Overflow
         <div className="flex flex-col md:flex-row w-full h-full bg-zinc-950 overflow-hidden">
             
-            {/* --- LEFT PANEL: DISPLAY --- 
-                Takes remaining space (flex-1)
-            */}
-            <div className="flex-1 relative flex flex-col items-center justify-center bg-gradient-to-br from-black to-zinc-900 overflow-hidden p-4">
+            {/* LEFT PANEL: Display */}
+            <div className="flex-1 relative flex flex-col items-center justify-between bg-gradient-to-br from-black to-zinc-900 overflow-hidden p-4">
                 
-                {/* Note Display Container - Uses Flex Grow to center nicely */}
+                {/* Note Display (Centers vertically in available space) */}
                 <div className="flex-1 flex flex-col items-center justify-center w-full min-h-0">
                     <div className="flex items-start font-black text-white tracking-tighter leading-none drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]" style={{ fontSize: 'min(25vh, 25vw)' }}>
                         {tuningData.note}
                         <span className="text-[0.4em] mt-[0.1em] text-zinc-500 font-normal ml-2">{tuningData.octave}</span>
                     </div>
 
-                    {/* Status Text */}
                     <div className="h-8 mt-2 flex items-center justify-center">
                         {tuningData.note !== '--' ? (
                             <div className={`text-xl md:text-2xl font-mono ${Math.abs(tuningData.cents) < 3 ? 'text-green-500' : 'text-red-500'}`}>
@@ -279,10 +290,9 @@ const TunerApp = () => {
                     </div>
                 </div>
 
-                {/* Visualizer Container - Fixed percentage height to ensure room for graph */}
-                <div className="w-full h-[35%] flex flex-col items-center justify-center pb-4">
+                {/* Visualizer Area (Fixed height ratio to keep it stable) */}
+                <div className="w-full h-[35%] flex flex-col items-center justify-center pb-2">
                     {mode === 'chromatic' && <ChromaticNeedle cents={tuningData.cents} />}
-                    
                     {mode === 'strobe' && (
                         <div className="w-full h-full flex flex-col justify-center opacity-90 gap-1">
                             <StrobeBand speed={strobeSpeed} direction={isSharp ? 'sharp' : 'flat'} />
@@ -290,23 +300,18 @@ const TunerApp = () => {
                             <StrobeBand speed={strobeSpeed * 0.75} direction={isSharp ? 'sharp' : 'flat'} />
                         </div>
                     )}
-                    
                     {mode === 'polyphonic' && (
                         <PolyphonicDisplay detectedFreq={tuningData.frequency} refFreq={refFreq} />
                     )}
                 </div>
             </div>
 
-            {/* --- RIGHT PANEL: CONTROLS --- 
-                Fixed width on Desktop (md:w-80), 
-                Auto height on Mobile (flex-none)
-            */}
-            <div className="flex-none w-full md:w-72 bg-zinc-900 border-t md:border-t-0 md:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20 overflow-y-auto">
+            {/* RIGHT PANEL: Controls */}
+            <div className="flex-none w-full md:w-72 bg-zinc-900 border-t md:border-t-0 md:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20">
                 
-                {/* Controls Grid for Compact Mobile Layout */}
                 <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
                     
-                    {/* 1. Mode Switch */}
+                    {/* Mode */}
                     <div className="col-span-2 md:col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Mode</label>
                         <div className="bg-zinc-950 p-1 rounded-lg border border-zinc-800 flex flex-row md:flex-col gap-1">
@@ -328,7 +333,7 @@ const TunerApp = () => {
                         </div>
                     </div>
 
-                    {/* 2. Reference Pitch */}
+                    {/* Ref Pitch */}
                     <div className="col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Ref Pitch</label>
                         <div className="flex items-center justify-between bg-zinc-950 rounded-lg border border-zinc-800 p-1 h-12">
@@ -343,7 +348,7 @@ const TunerApp = () => {
                         </div>
                     </div>
 
-                    {/* 3. Screen Lock */}
+                    {/* Screen Lock */}
                     <div className="col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Screen</label>
                         <button 
@@ -358,7 +363,6 @@ const TunerApp = () => {
                     </div>
                 </div>
 
-                {/* Mic Button - Pushed to bottom on Desktop */}
                 <div className="mt-auto pt-2 md:pt-4 border-t border-zinc-800">
                     <button 
                         onClick={toggleMic}
