@@ -62,8 +62,6 @@ const autoCorrelate = (buf, sampleRate) => {
 // --- VISUAL COMPONENTS ---
 
 const StrobeBand = ({ speed, direction }) => {
-    // If speed is 0, no animation. 
-    // Otherwise calculate duration. Higher speed = lower duration.
     const duration = speed === 0 ? '0s' : `${Math.max(0.1, 1 / Math.abs(speed))}s`;
     const animationName = direction === 'sharp' ? 'strobe-spin-right' : 'strobe-spin-left';
     
@@ -138,13 +136,11 @@ const PolyphonicDisplay = ({ detectedFreq, refFreq }) => {
 // --- MAIN APP ---
 
 const TunerApp = () => {
-    // UI State
     const [mode, setMode] = useState('chromatic');
     const [refFreq, setRefFreq] = useState(440);
     const [keepAwake, setKeepAwake] = useState(false);
     const [isListening, setIsListening] = useState(false);
     
-    // Tuning State
     const [tuningData, setTuningData] = useState({ 
         note: '--', 
         octave: '', 
@@ -152,23 +148,17 @@ const TunerApp = () => {
         frequency: 0 
     });
 
-    // Refs
     const audioContextRef = useRef(null);
     const analyserRef = useRef(null);
     const micStreamRef = useRef(null);
     const requestRef = useRef(null);
     const wakeLockRef = useRef(null);
-    
-    // CRITICAL FIX: Keep refFreq in a Ref so the animation loop sees the latest value
     const refFreqRef = useRef(440);
 
-    // Sync Ref with State
     useEffect(() => {
         refFreqRef.current = refFreq;
     }, [refFreq]);
 
-
-    // --- WAKE LOCK LOGIC ---
     const requestWakeLock = useCallback(async () => {
         if ('wakeLock' in navigator) {
             try {
@@ -201,8 +191,6 @@ const TunerApp = () => {
         return () => releaseWakeLock();
     }, [keepAwake, requestWakeLock, releaseWakeLock]);
 
-
-    // --- TUNER LOOP ---
     const updatePitch = () => {
         if (!analyserRef.current) return;
         const buffer = new Float32Array(analyserRef.current.fftSize);
@@ -210,9 +198,7 @@ const TunerApp = () => {
         const frequency = autoCorrelate(buffer, audioContextRef.current.sampleRate);
 
         if (frequency !== -1) {
-            // READ FROM REF, NOT STATE
             const currentRefFreq = refFreqRef.current;
-
             const noteNum = 12 * (Math.log(frequency / currentRefFreq) / Math.log(2)) + 69;
             const noteIndex = Math.round(noteNum);
             const noteName = NOTE_STRINGS[noteIndex % 12];
@@ -225,7 +211,6 @@ const TunerApp = () => {
         requestRef.current = requestAnimationFrame(updatePitch);
     };
 
-    // --- MIC HANDLING ---
     const startMic = async () => {
         if (audioContextRef.current) return;
         try {
@@ -264,33 +249,42 @@ const TunerApp = () => {
     const strobeSpeed = (tuningData.cents / 50); 
     const stepButtonStyle = "flex-1 h-full min-h-[3rem] flex items-center justify-center bg-zinc-800 rounded-md text-zinc-400 hover:text-white active:scale-95 transition-all cursor-pointer select-none";
 
-    // Layout Helpers
-    // We use CSS Grid/Flex combos to ensure 100% viewport coverage without scrolling
+    // --- RENDER ---
     return (
-        <div className="flex flex-col md:flex-row w-full h-full bg-zinc-950 overflow-hidden">
+        // Changed h-screen to h-[100dvh] for Safari mobile
+        // Used landscape: prefixes instead of md: to force rotation layout
+        <div className="flex flex-col landscape:flex-row w-full h-[100dvh] bg-zinc-950 overflow-hidden">
             
             {/* LEFT PANEL: Display */}
             <div className="flex-1 relative flex flex-col items-center justify-between bg-gradient-to-br from-black to-zinc-900 overflow-hidden p-4">
                 
-                {/* Note Display (Centers vertically in available space) */}
+                {/* Note Info */}
                 <div className="flex-1 flex flex-col items-center justify-center w-full min-h-0">
                     <div className="flex items-start font-black text-white tracking-tighter leading-none drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]" style={{ fontSize: 'min(25vh, 25vw)' }}>
                         {tuningData.note}
                         <span className="text-[0.4em] mt-[0.1em] text-zinc-500 font-normal ml-2">{tuningData.octave}</span>
                     </div>
 
-                    <div className="h-8 mt-2 flex items-center justify-center">
+                    <div className="flex flex-col items-center justify-center min-h-[4rem] mt-4">
                         {tuningData.note !== '--' ? (
-                            <div className={`text-xl md:text-2xl font-mono ${Math.abs(tuningData.cents) < 3 ? 'text-green-500' : 'text-red-500'}`}>
-                                {tuningData.cents > 0 ? '+' : ''}{Math.floor(tuningData.cents)} cents
-                            </div>
+                            <>
+                                {/* Increased font size (text-4xl) */}
+                                <div className={`text-3xl landscape:text-4xl font-mono font-bold ${Math.abs(tuningData.cents) < 3 ? 'text-green-500' : 'text-red-500'}`}>
+                                    {tuningData.cents > 0 ? '+' : ''}{Math.floor(tuningData.cents)}
+                                    <span className="text-lg ml-1 opacity-60">cents</span>
+                                </div>
+                                {/* Added Frequency display */}
+                                <div className="text-2xl landscape:text-3xl font-mono text-zinc-500 mt-1">
+                                    {tuningData.frequency.toFixed(1)} <span className="text-sm opacity-60">Hz</span>
+                                </div>
+                            </>
                         ) : (
                             <div className="text-zinc-600 font-mono animate-pulse">{isListening ? 'Listening...' : 'Mic Off'}</div>
                         )}
                     </div>
                 </div>
 
-                {/* Visualizer Area (Fixed height ratio to keep it stable) */}
+                {/* Visualizer */}
                 <div className="w-full h-[35%] flex flex-col items-center justify-center pb-2">
                     {mode === 'chromatic' && <ChromaticNeedle cents={tuningData.cents} />}
                     {mode === 'strobe' && (
@@ -307,27 +301,28 @@ const TunerApp = () => {
             </div>
 
             {/* RIGHT PANEL: Controls */}
-            <div className="flex-none w-full md:w-72 bg-zinc-900 border-t md:border-t-0 md:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20">
+            {/* Fixed width in landscape, auto in portrait */}
+            <div className="flex-none w-full landscape:w-72 bg-zinc-900 border-t landscape:border-t-0 landscape:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20">
                 
-                <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
+                <div className="grid grid-cols-2 landscape:grid-cols-1 gap-3">
                     
                     {/* Mode */}
-                    <div className="col-span-2 md:col-span-1 flex flex-col gap-1">
+                    <div className="col-span-2 landscape:col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Mode</label>
-                        <div className="bg-zinc-950 p-1 rounded-lg border border-zinc-800 flex flex-row md:flex-col gap-1">
+                        <div className="bg-zinc-950 p-1 rounded-lg border border-zinc-800 flex flex-row landscape:flex-col gap-1">
                             {['chromatic', 'polyphonic', 'strobe'].map((m) => (
                                 <button
                                     key={m}
                                     onClick={() => setMode(m)}
-                                    className={`flex-1 md:flex-none text-center md:text-left px-2 py-2 md:py-3 rounded-md text-xs md:text-sm font-medium transition-all flex items-center justify-center md:justify-between ${
+                                    className={`flex-1 landscape:flex-none text-center landscape:text-left px-2 py-2 landscape:py-3 rounded-md text-xs landscape:text-sm font-medium transition-all flex items-center justify-center landscape:justify-between ${
                                         mode === m 
                                         ? 'bg-zinc-800 text-white shadow-md border border-zinc-700' 
                                         : 'text-zinc-500 hover:text-zinc-300'
                                     }`}
                                 >
-                                    <span className="capitalize hidden md:inline">{m}</span>
-                                    <span className="capitalize md:hidden">{m.slice(0,4)}</span>
-                                    <div className={`hidden md:block w-2 h-2 rounded-full ${mode === m ? 'bg-blue-500' : 'bg-zinc-700'}`}></div>
+                                    <span className="capitalize hidden landscape:inline">{m}</span>
+                                    <span className="capitalize landscape:hidden">{m.slice(0,4)}</span>
+                                    <div className={`hidden landscape:block w-2 h-2 rounded-full ${mode === m ? 'bg-blue-500' : 'bg-zinc-700'}`}></div>
                                 </button>
                             ))}
                         </div>
@@ -363,7 +358,7 @@ const TunerApp = () => {
                     </div>
                 </div>
 
-                <div className="mt-auto pt-2 md:pt-4 border-t border-zinc-800">
+                <div className="mt-auto pt-2 landscape:pt-4 border-t border-zinc-800">
                     <button 
                         onClick={toggleMic}
                         className={`w-full flex items-center justify-center gap-2 py-3 rounded-md font-bold text-sm transition-all ${
