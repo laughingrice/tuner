@@ -274,15 +274,7 @@ const InstrumentModal = ({ isOpen, onClose, onSave, onDelete, initialData }) => 
                 </div>
 
                 <div className="p-4 border-t border-zinc-800 flex gap-2">
-                    {initialData && !initialData.isDefault && (
-                        <button 
-                            onClick={() => { onDelete(initialData.id); onClose(); }}
-                            className="px-4 py-2 bg-red-900/30 text-red-400 rounded hover:bg-red-900/50 mr-auto"
-                        >
-                            Delete
-                        </button>
-                    )}
-                    <button onClick={onClose} className="px-4 py-2 text-zinc-400 hover:text-white">Cancel</button>
+                    <button onClick={onClose} className="px-4 py-2 text-zinc-400 hover:text-white ml-auto">Cancel</button>
                     <button onClick={handleSave} className="px-6 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500">Save</button>
                 </div>
             </div>
@@ -333,7 +325,6 @@ const TunerApp = () => {
         refFreqRef.current = refFreq;
     }, [instruments, currentInstrumentId, mode, refFreq]);
 
-    // Keep track of listening state for wake lock handler
     useEffect(() => {
         isListeningRef.current = isListening;
     }, [isListening]);
@@ -355,7 +346,6 @@ const TunerApp = () => {
         }
     }, []);
 
-    // Re-acquire lock if tab visibility changes while listening
     useEffect(() => {
         const handleVisibilityChange = async () => {
             if (document.visibilityState === 'visible' && isListeningRef.current) {
@@ -366,7 +356,6 @@ const TunerApp = () => {
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [requestWakeLock]);
 
-    // Main Wake Lock Switch based on listening state
     useEffect(() => {
         if (isListening) requestWakeLock();
         else releaseWakeLock();
@@ -518,12 +507,26 @@ const TunerApp = () => {
                             </select>
                             
                             {!currentInstrument.isDefault && (
-                                <button 
-                                    onClick={openEditModal}
-                                    className="px-3 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 border border-zinc-700"
-                                >
-                                    ✎
-                                </button>
+                                <>
+                                    <button 
+                                        onClick={openEditModal}
+                                        className="px-3 bg-zinc-800 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 border border-zinc-700"
+                                        title="Edit"
+                                    >
+                                        ✎
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            if(confirm('Delete "' + currentInstrument.name + '"?')) {
+                                                handleDeleteInstrument(currentInstrument.id);
+                                            }
+                                        }}
+                                        className="px-3 bg-zinc-800 rounded-lg text-red-400 hover:text-red-200 hover:bg-red-900/30 border border-zinc-700"
+                                        title="Delete"
+                                    >
+                                        🗑
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
@@ -550,7 +553,7 @@ const TunerApp = () => {
                         </div>
                     </div>
 
-                    {/* Ref Pitch (Full width now that screen button is gone) */}
+                    {/* Ref Pitch */}
                     <div className="col-span-2 landscape:col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Ref Pitch</label>
                         <div className="flex items-center justify-between bg-zinc-950 rounded-lg border border-zinc-800 p-1 h-12">
