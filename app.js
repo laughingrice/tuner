@@ -1,4 +1,4 @@
-const { useState, useEffect, useRef, useCallback, useMemo } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
 // --- CONSTANTS & DATA ---
 
@@ -56,11 +56,8 @@ const DEFAULT_INSTRUMENTS = [
 
 // --- AUDIO LOGIC ---
 
-// Calculate frequency based on Note, Octave and Reference Pitch (A4)
 const getNoteFrequency = (note, octave, refA4 = 440) => {
     const noteIndex = NOTE_NAMES.indexOf(note);
-    // MIDI Note Number calculation: (Octave + 1) * 12 + NoteIndex
-    // A4 is MIDI 69.
     const midiNum = (octave + 1) * 12 + noteIndex;
     return refA4 * Math.pow(2, (midiNum - 69) / 12);
 };
@@ -152,7 +149,6 @@ const PolyphonicDisplay = ({ detectedFreq, refFreq, strings }) => {
     return (
         <div className="flex justify-between items-end w-full h-full px-2 gap-1 md:gap-2">
             {strings.map((str, idx) => {
-                // Dynamic Calculation based on current Ref Pitch
                 const targetFreq = getNoteFrequency(str.note, str.octave, refFreq);
                 const isActive = detectedFreq && Math.abs(detectedFreq - targetFreq) < 20; 
                 let cents = 0;
@@ -233,7 +229,6 @@ const InstrumentModal = ({ isOpen, onClose, onSave, onDelete, initialData }) => 
                 </div>
                 
                 <div className="p-4 overflow-y-auto flex-1 space-y-4">
-                    {/* Name Input */}
                     <div>
                         <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Name</label>
                         <input 
@@ -243,8 +238,6 @@ const InstrumentModal = ({ isOpen, onClose, onSave, onDelete, initialData }) => 
                             className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-white focus:border-blue-500 focus:outline-none"
                         />
                     </div>
-
-                    {/* String Count */}
                     <div>
                         <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Number of Strings</label>
                         <input 
@@ -256,8 +249,6 @@ const InstrumentModal = ({ isOpen, onClose, onSave, onDelete, initialData }) => 
                             className="w-full bg-zinc-950 border border-zinc-700 rounded p-2 text-white focus:border-blue-500 focus:outline-none"
                         />
                     </div>
-
-                    {/* Strings Editor */}
                     <div className="space-y-2">
                         <label className="block text-xs font-bold text-zinc-500 uppercase">String Tuning</label>
                         {strings.map((str, idx) => (
@@ -303,7 +294,6 @@ const InstrumentModal = ({ isOpen, onClose, onSave, onDelete, initialData }) => 
 
 const TunerApp = () => {
     // --- STATE ---
-    // Load from LocalStorage or use defaults
     const [instruments, setInstruments] = useState(() => {
         const saved = localStorage.getItem('tuner_instruments');
         return saved ? JSON.parse(saved) : DEFAULT_INSTRUMENTS;
@@ -317,11 +307,9 @@ const TunerApp = () => {
     const [refFreq, setRefFreq] = useState(() => parseInt(localStorage.getItem('tuner_reffreq')) || 440);
     
     // UI State
-    const [keepAwake, setKeepAwake] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
-    const [editingInstrument, setEditingInstrument] = useState(null); // null = add mode, object = edit mode
-
+    const [editingInstrument, setEditingInstrument] = useState(null); 
     const [tuningData, setTuningData] = useState({ note: '--', octave: '', cents: 0, frequency: 0 });
 
     // --- REFS ---
@@ -331,11 +319,12 @@ const TunerApp = () => {
     const requestRef = useRef(null);
     const wakeLockRef = useRef(null);
     const refFreqRef = useRef(refFreq);
+    const isListeningRef = useRef(isListening);
 
     // Derived State
     const currentInstrument = instruments.find(i => i.id === currentInstrumentId) || instruments[0];
 
-    // --- PERSISTENCE ---
+    // --- EFFECT: Sync Refs & Storage ---
     useEffect(() => {
         localStorage.setItem('tuner_instruments', JSON.stringify(instruments));
         localStorage.setItem('tuner_current_inst', currentInstrumentId);
@@ -344,43 +333,18 @@ const TunerApp = () => {
         refFreqRef.current = refFreq;
     }, [instruments, currentInstrumentId, mode, refFreq]);
 
-    // --- INSTRUMENT LOGIC ---
-    const handleSaveInstrument = (instData) => {
-        if (instruments.some(i => i.id === instData.id)) {
-            // Update existing
-            setInstruments(prev => prev.map(i => i.id === instData.id ? instData : i));
-        } else {
-            // Add new
-            setInstruments(prev => [...prev, instData]);
-            setCurrentInstrumentId(instData.id); // Switch to new instrument
-        }
-    };
+    // Keep track of listening state for wake lock handler
+    useEffect(() => {
+        isListeningRef.current = isListening;
+    }, [isListening]);
 
-    const handleDeleteInstrument = (id) => {
-        const newIdx = instruments.findIndex(i => i.id === id) - 1;
-        const fallbackId = instruments[Math.max(0, newIdx)].id;
-        setInstruments(prev => prev.filter(i => i.id !== id));
-        setCurrentInstrumentId(fallbackId);
-    };
 
-    const openAddModal = () => {
-        setEditingInstrument(null);
-        setModalOpen(true);
-    };
-
-    const openEditModal = () => {
-        if (currentInstrument.isDefault) return; // Should not happen due to UI logic
-        setEditingInstrument(currentInstrument);
-        setModalOpen(true);
-    };
-
-    // --- WAKE LOCK & MIC (Standard Logic) ---
+    // --- WAKE LOCK LOGIC (Auto) ---
     const requestWakeLock = useCallback(async () => {
         if ('wakeLock' in navigator) {
             try {
                 wakeLockRef.current = await navigator.wakeLock.request('screen');
-                document.addEventListener('visibilitychange', handleVisibilityChange);
-            } catch (err) { console.warn(err); setKeepAwake(false); }
+            } catch (err) { console.warn("Wake Lock Error:", err); }
         }
     }, []);
 
@@ -388,19 +352,29 @@ const TunerApp = () => {
         if (wakeLockRef.current) {
             await wakeLockRef.current.release();
             wakeLockRef.current = null;
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
         }
     }, []);
 
-    const handleVisibilityChange = async () => {
-        if (wakeLockRef.current !== null && document.visibilityState === 'visible') await requestWakeLock();
-    };
-
+    // Re-acquire lock if tab visibility changes while listening
     useEffect(() => {
-        if (keepAwake) requestWakeLock(); else releaseWakeLock();
-        return () => releaseWakeLock();
-    }, [keepAwake, requestWakeLock, releaseWakeLock]);
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible' && isListeningRef.current) {
+                await requestWakeLock();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [requestWakeLock]);
 
+    // Main Wake Lock Switch based on listening state
+    useEffect(() => {
+        if (isListening) requestWakeLock();
+        else releaseWakeLock();
+        return () => releaseWakeLock();
+    }, [isListening, requestWakeLock, releaseWakeLock]);
+
+
+    // --- TUNER LOGIC ---
     const updatePitch = () => {
         if (!analyserRef.current) return;
         const buffer = new Float32Array(analyserRef.current.fftSize);
@@ -445,6 +419,27 @@ const TunerApp = () => {
     };
 
     const toggleMic = () => isListening ? stopMic() : startMic();
+
+    // Instrument Handlers
+    const handleSaveInstrument = (instData) => {
+        if (instruments.some(i => i.id === instData.id)) {
+            setInstruments(prev => prev.map(i => i.id === instData.id ? instData : i));
+        } else {
+            setInstruments(prev => [...prev, instData]);
+            setCurrentInstrumentId(instData.id);
+        }
+    };
+
+    const handleDeleteInstrument = (id) => {
+        const newIdx = instruments.findIndex(i => i.id === id) - 1;
+        const fallbackId = instruments[Math.max(0, newIdx)].id;
+        setInstruments(prev => prev.filter(i => i.id !== id));
+        setCurrentInstrumentId(fallbackId);
+    };
+
+    const openAddModal = () => { setEditingInstrument(null); setModalOpen(true); };
+    const openEditModal = () => { if (currentInstrument.isDefault) return; setEditingInstrument(currentInstrument); setModalOpen(true); };
+
     const isSharp = tuningData.cents > 0;
     const strobeSpeed = (tuningData.cents / 50); 
     const stepButtonStyle = "flex-1 h-full min-h-[3rem] flex items-center justify-center bg-zinc-800 rounded-md text-zinc-400 hover:text-white active:scale-95 transition-all cursor-pointer select-none";
@@ -453,7 +448,6 @@ const TunerApp = () => {
     return (
         <div className="flex flex-col landscape:flex-row w-full h-[100dvh] bg-zinc-950 overflow-hidden relative">
             
-            {/* Modal Layer */}
             <InstrumentModal 
                 isOpen={modalOpen} 
                 onClose={() => setModalOpen(false)} 
@@ -462,7 +456,7 @@ const TunerApp = () => {
                 initialData={editingInstrument}
             />
 
-            {/* LEFT PANEL: Display */}
+            {/* LEFT PANEL */}
             <div className="flex-1 relative flex flex-col items-center justify-between bg-gradient-to-br from-black to-zinc-900 overflow-hidden p-4">
                 <div className="flex-1 flex flex-col items-center justify-center w-full min-h-0">
                     <div className="flex items-start font-black text-white tracking-tighter leading-none drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]" style={{ fontSize: 'min(25vh, 25vw)' }}>
@@ -504,7 +498,7 @@ const TunerApp = () => {
             <div className="flex-none w-full landscape:w-80 bg-zinc-900 border-t landscape:border-t-0 landscape:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20 overflow-y-auto">
                 <div className="grid grid-cols-2 landscape:grid-cols-1 gap-3">
                     
-                    {/* Instrument Selector (New Feature) */}
+                    {/* Instrument Selector */}
                     <div className="col-span-2 landscape:col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Instrument</label>
                         <div className="flex gap-1">
@@ -523,7 +517,6 @@ const TunerApp = () => {
                                 <option value="ADD_NEW">+ Add Custom...</option>
                             </select>
                             
-                            {/* Edit Button (Only enables for custom instruments) */}
                             {!currentInstrument.isDefault && (
                                 <button 
                                     onClick={openEditModal}
@@ -557,8 +550,8 @@ const TunerApp = () => {
                         </div>
                     </div>
 
-                    {/* Ref Pitch & Screen Lock */}
-                    <div className="col-span-1 flex flex-col gap-1">
+                    {/* Ref Pitch (Full width now that screen button is gone) */}
+                    <div className="col-span-2 landscape:col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Ref Pitch</label>
                         <div className="flex items-center justify-between bg-zinc-950 rounded-lg border border-zinc-800 p-1 h-12">
                             <button onClick={() => setRefFreq(r => r - 1)} className={stepButtonStyle}>-</button>
@@ -570,19 +563,6 @@ const TunerApp = () => {
                             />
                             <button onClick={() => setRefFreq(r => r + 1)} className={stepButtonStyle}>+</button>
                         </div>
-                    </div>
-
-                    <div className="col-span-1 flex flex-col gap-1">
-                        <label className="text-zinc-500 text-[10px] uppercase font-bold">Screen</label>
-                        <button 
-                            onClick={() => setKeepAwake(!keepAwake)}
-                            className="h-12 w-full flex items-center justify-between px-3 bg-zinc-950 rounded-lg border border-zinc-800"
-                        >
-                            <span className="text-xs text-zinc-400">Keep On</span>
-                            <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${keepAwake ? 'bg-blue-600' : 'bg-zinc-700'}`}>
-                                <div className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform duration-300 shadow-md ${keepAwake ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                            </div>
-                        </button>
                     </div>
                 </div>
 
