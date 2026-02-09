@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProAudio React Tuner</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        .strobe-pattern {
+            background-image: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 20px,
+                rgba(255, 255, 255, 0.8) 20px,
+                rgba(255, 255, 255, 0.8) 40px
+            );
+            background-size: 200% 100%;
+        }
+
+        @keyframes strobe-spin-right {
+            0% { background-position: 0% 0; }
+            100% { background-position: 100% 0; }
+        }
+
+        @keyframes strobe-spin-left {
+            0% { background-position: 0% 0; }
+            100% { background-position: -100% 0; }
+        }
+        
+        /* --- CLEAN INPUT STYLES --- */
+        /* Hide scrollbars generally */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* STRICTLY Hide Number Input Spinners (Up/Down arrows) */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield; /* Firefox */
+        }
+    </style>
+</head>
+<body class="bg-zinc-900 text-white h-screen w-screen overflow-hidden flex items-center justify-center">
+    <div id="root" class="w-full h-full"></div>
+    <script type="text/babel" src="app.js"></script>
+</body>
+</html>
