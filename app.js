@@ -483,8 +483,24 @@ const TunerApp = () => {
                 </div>
             </div>
 
-            {/* RIGHT PANEL: Controls */}
+            {/* RIGHT PANEL: Controls (Reordered) */}
             <div className="flex-none w-full landscape:w-80 bg-zinc-900 border-t landscape:border-t-0 landscape:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20 overflow-y-auto">
+                
+                {/* START BUTTON (Now at Top) */}
+                <div className="mb-2 pb-2 border-b border-zinc-800">
+                    <button 
+                        onClick={toggleMic}
+                        className={`w-full flex items-center justify-center gap-2 py-3 rounded-md font-bold text-sm transition-all ${
+                            isListening 
+                            ? 'bg-red-900/30 text-red-200 border border-red-900 hover:bg-red-900/50' 
+                            : 'bg-green-900/30 text-green-200 border border-green-900 hover:bg-green-900/50'
+                        }`}
+                    >
+                        <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
+                        {isListening ? 'STOP' : 'START'}
+                    </button>
+                </div>
+
                 <div className="grid grid-cols-2 landscape:grid-cols-1 gap-3">
                     
                     {/* Instrument Selector */}
@@ -567,20 +583,6 @@ const TunerApp = () => {
                             <button onClick={() => setRefFreq(r => r + 1)} className={stepButtonStyle}>+</button>
                         </div>
                     </div>
-                </div>
-
-                <div className="mt-auto pt-2 landscape:pt-4 border-t border-zinc-800">
-                    <button 
-                        onClick={toggleMic}
-                        className={`w-full flex items-center justify-center gap-2 py-3 rounded-md font-bold text-sm transition-all ${
-                            isListening 
-                            ? 'bg-red-900/30 text-red-200 border border-red-900 hover:bg-red-900/50' 
-                            : 'bg-green-900/30 text-green-200 border border-green-900 hover:bg-green-900/50'
-                        }`}
-                    >
-                        <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-                        {isListening ? 'STOP' : 'START'}
-                    </button>
                 </div>
             </div>
         </div>
