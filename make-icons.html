@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Icon Generator</title>
+    <style>
+        body { background: #222; color: white; font-family: sans-serif; display: flex; flex-col; align-items: center; justify-content: center; height: 100vh; gap: 20px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #22c55e; border: none; color: white; border-radius: 5px; }
+        canvas { border: 1px solid #555; }
+    </style>
+</head>
+<body>
+    <h2>1. Preview (512x512)</h2>
+    <canvas id="canvas" width="512" height="512"></canvas>
+    
+    <h2>2. Download</h2>
+    <div style="display:flex; gap: 10px;">
+        <button onclick="download(192)">Download icon-192.png</button>
+        <button onclick="download(512)">Download icon-512.png</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const w = 512, h = 512;
+
+        // Draw Icon Background
+        ctx.fillStyle = '#18181b'; // Zinc-900
+        ctx.fillRect(0, 0, w, h);
+
+        // Draw Circle
+        ctx.beginPath();
+        ctx.arc(w/2, h/2, 200, 0, 2 * Math.PI);
+        ctx.lineWidth = 20;
+        ctx.strokeStyle = '#3f3f46'; // Zinc-700
+        ctx.stroke();
+
+        // Draw Needle (Green)
+        ctx.beginPath();
+        ctx.moveTo(w/2, h/2);
+        ctx.lineTo(w/2, h/2 - 180);
+        ctx.lineWidth = 15;
+        ctx.strokeStyle = '#22c55e'; // Green-500
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Draw Center Dot
+        ctx.beginPath();
+        ctx.arc(w/2, h/2, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = '#e4e4e7';
+        ctx.fill();
+
+        // Draw Text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 100px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('A4', w/2, h - 80);
+
+        function download(size) {
+            // Resize for 192 if needed
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = size;
+            tempCanvas.height = size;
+            const tCtx = tempCanvas.getContext('2d');
+            tCtx.drawImage(canvas, 0, 0, size, size);
+
+            const link = document.createElement('a');
+            link.download = `icon-${size}.png`;
+            link.href = tempCanvas.toDataURL();
+            link.click();
+        }
+    </script>
+</body>
+</html>
