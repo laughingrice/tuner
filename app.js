@@ -302,6 +302,7 @@ const TunerApp = () => {
     
     // UI State
     const [isListening, setIsListening] = useState(false);
+    const [micPermission, setMicPermission] = useState('unknown'); // 'unknown' | 'granted' | 'denied' | 'prompt'
     const [modalOpen, setModalOpen] = useState(false);
     const [editingInstrument, setEditingInstrument] = useState(null); 
     const [tuningData, setTuningData] = useState({ note: '--', octave: '', cents: 0, frequency: 0 });
@@ -330,6 +331,40 @@ const TunerApp = () => {
     useEffect(() => {
         isListeningRef.current = isListening;
     }, [isListening]);
+
+
+    // --- Microphone permission detection & UX helpers ---
+    const isIosStandalone = typeof navigator !== 'undefined' && ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone);
+
+    const checkMicPermission = useCallback(async () => {
+        try {
+            if (!navigator.permissions || !navigator.permissions.query) {
+                // Permissions API not supported — assume prompt flow
+                setMicPermission('prompt');
+                return;
+            }
+            const status = await navigator.permissions.query({ name: 'microphone' });
+            setMicPermission(status.state); // 'granted' | 'denied' | 'prompt'
+
+            const onChange = () => setMicPermission(status.state);
+            status.addEventListener?.('change', onChange);
+            return () => status.removeEventListener?.('change', onChange);
+        } catch (err) {
+            setMicPermission('prompt');
+        }
+    }, []);
+
+    useEffect(() => {
+        // check on mount and whenever the app becomes visible (user may change Settings)
+        let cleanup;
+        (async () => { cleanup = await checkMicPermission(); })();
+        const onVisibility = () => { if (document.visibilityState === 'visible') checkMicPermission(); };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            document.removeEventListener('visibilitychange', onVisibility);
+            if (cleanup) cleanup();
+        };
+    }, [checkMicPermission]);
 
 
     // --- WAKE LOCK LOGIC (Auto) ---
@@ -409,6 +444,7 @@ const TunerApp = () => {
             lowPass.connect(analyserRef.current);
 
             micStreamRef.current = stream;
+            setMicPermission('granted');
             setIsListening(true);
             requestRef.current = requestAnimationFrame(updatePitch);
         } catch (err) { console.error("Mic Error:", err); alert("Could not access microphone."); }
@@ -514,6 +550,30 @@ const TunerApp = () => {
                         <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
                         {isListening ? 'STOP' : 'START'}
                     </button>
+
+                    <div className="mt-2 text-xs text-zinc-400 flex items-center justify-between gap-2">
+                        <div>
+                            Permission: <span className={`font-medium ${micPermission === 'granted' ? 'text-green-400' : micPermission === 'denied' ? 'text-red-400' : 'text-yellow-300'}`}>{micPermission}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {micPermission === 'denied' && (
+                                <button
+                                    onClick={() => {
+                                        if (isIosStandalone) window.open(location.href, '_blank');
+                                        alert('If microphone is denied, open Safari → Settings → Microphone (or Website Settings) and allow microphone for this site.');
+                                    }}
+                                    className="px-2 py-1 bg-zinc-800 rounded text-xs border border-zinc-700"
+                                >Open in Safari</button>
+                            )}
+
+                            {micPermission === 'prompt' && (
+                                <button
+                                    onClick={async () => { try { await navigator.mediaDevices.getUserMedia({ audio: true }); await checkMicPermission(); } catch (e) { console.warn(e); } }}
+                                    className="px-2 py-1 bg-zinc-800 rounded text-xs border border-zinc-700"
+                                >Request</button>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 landscape:grid-cols-1 gap-3">
