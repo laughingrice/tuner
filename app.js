@@ -620,7 +620,7 @@ const TunerApp = () => {
                     </div>
                 </div>
 
-                <div className="w-full h-[35%] flex flex-col items-center justify-center pb-2">
+                <div className="w-full h-[55%] flex flex-col items-center justify-center pb-2">
                     {mode === 'chromatic' && <ChromaticNeedle cents={tuningData.cents} />}
                     {mode === 'strobe' && (
                         <div className="w-full h-full flex flex-col justify-center opacity-90 gap-1">
