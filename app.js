@@ -403,6 +403,8 @@ const TunerApp = () => {
     const wakeLockRef = useRef(null);
     const refFreqRef = useRef(refFreq);
     const isListeningRef = useRef(isListening);
+    const smoothedCentsRef = useRef(0);
+    const lastUpdateTimeRef = useRef(Date.now());
 
     // Derived State
     const currentInstrument = instruments.find(i => i.id === currentInstrumentId) || instruments[0];
@@ -502,13 +504,22 @@ const TunerApp = () => {
             const noteName = NOTE_NAMES[noteIndex % 12];
             const octave = Math.floor(noteIndex / 12) - 1;
             const perfectFreq = currentRefFreq * Math.pow(2, (noteIndex - 69) / 12);
-            const cents = 1200 * Math.log2(frequency / perfectFreq);
+            const rawCents = 1200 * Math.log2(frequency / perfectFreq);
 
-            setTuningData({ note: noteName, octave: octave, cents: cents, frequency: frequency });
+            // Apply exponential smoothing with 100ms time constant
+            const now = Date.now();
+            const dt = Math.min((now - lastUpdateTimeRef.current) / 1000, 0.05); // Cap at 50ms for stability
+            lastUpdateTimeRef.current = now;
+            const tau = 0.1; // 100ms time constant
+            const alpha = 1 - Math.exp(-dt / tau);
+            smoothedCentsRef.current = smoothedCentsRef.current + alpha * (rawCents - smoothedCentsRef.current);
+            const smoothedCents = smoothedCentsRef.current;
+
+            setTuningData({ note: noteName, octave: octave, cents: smoothedCents, frequency: frequency });
             
-            // Update frequency history for graph mode
+            // Update frequency history for graph mode (use raw cents for graph)
             setFrequencyHistory(prev => {
-                const updated = [...prev, { cents: cents, frequency: frequency }];
+                const updated = [...prev, { cents: rawCents, frequency: frequency }];
                 // Keep last 200 measurements for graph
                 return updated.slice(Math.max(0, updated.length - 200));
             });
@@ -544,6 +555,8 @@ const TunerApp = () => {
             lowPass.connect(analyserRef.current);
 
             micStreamRef.current = stream;
+            smoothedCentsRef.current = 0;
+            lastUpdateTimeRef.current = Date.now();
             setMicPermission('granted');
             setIsListening(true);
             requestRef.current = requestAnimationFrame(updatePitch);
@@ -554,6 +567,8 @@ const TunerApp = () => {
         if (micStreamRef.current) { micStreamRef.current.getTracks().forEach(track => track.stop()); micStreamRef.current = null; }
         if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null; }
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        smoothedCentsRef.current = 0;
+        lastUpdateTimeRef.current = Date.now();
         setIsListening(false);
         setTuningData({ note: '--', octave: '', cents: 0, frequency: 0 });
         setFrequencyHistory([]);
@@ -607,7 +622,7 @@ const TunerApp = () => {
                     <div className="flex flex-col items-center justify-center min-h-[4rem] mt-4">
                         {tuningData.note !== '--' ? (
                             <>
-                                <div className={`text-3xl landscape:text-4xl font-mono font-bold ${Math.abs(tuningData.cents) < 3 ? 'text-green-500' : 'text-red-500'}`}>
+                                <div className={`text-2xl landscape:text-3xl font-mono font-bold ${Math.abs(tuningData.cents) < 3 ? 'text-green-500' : 'text-red-500'}`}>
                                     {tuningData.cents > 0 ? '+' : ''}{Math.floor(tuningData.cents)}<span className="text-lg ml-1 opacity-60">cents</span>
                                 </div>
                                 <div className="text-2xl landscape:text-3xl font-mono text-zinc-500 mt-1">
@@ -620,7 +635,7 @@ const TunerApp = () => {
                     </div>
                 </div>
 
-                <div className="w-full h-[55%] flex flex-col items-center justify-center pb-2">
+                <div className="w-full h-[50%] flex flex-col items-center justify-center pb-2">
                     {mode === 'chromatic' && <ChromaticNeedle cents={tuningData.cents} />}
                     {mode === 'strobe' && (
                         <div className="w-full h-full flex flex-col justify-center opacity-90 gap-1">
