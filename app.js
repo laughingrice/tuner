@@ -71,8 +71,8 @@ const autoCorrelate = (buf, sampleRate) => {
     }
     rms = Math.sqrt(rms / SIZE);
     
-    // Lowered threshold to 0.002 to detect quiet bass notes better
-    if (rms < 0.002) return -1;
+    // Lowered threshold to 0.0005 for better sensitivity to quiet notes
+    if (rms < 0.0005) return -1;
 
     let r1 = 0, r2 = SIZE - 1, thres = 0.2;
     for (let i = 0; i < SIZE / 2; i++) {
@@ -430,17 +430,22 @@ const TunerApp = () => {
             audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
             const source = audioContextRef.current.createMediaStreamSource(stream);
             
+            // Create Gain Node for Microphone Amplification
+            const gainNode = audioContextRef.current.createGain();
+            gainNode.gain.value = 3; // 3x amplification for better sensitivity
+            
             // Create Low Pass Filter (Essential for Bass detection)
             const lowPass = audioContextRef.current.createBiquadFilter();
             lowPass.type = "lowpass";
-            lowPass.frequency.value = 1000; // Cut off high harmonics
+            lowPass.frequency.value = 1500; // Increased to preserve more harmonics while reducing noise
             
             // Create Analyser
             analyserRef.current = audioContextRef.current.createAnalyser();
-            analyserRef.current.fftSize = 4096; // Increased from 2048 for better low-end resolution
+            analyserRef.current.fftSize = 2048; // Reduced from 4096 for ~50% faster response to tuning changes
             
-            // Connect: Source -> Filter -> Analyser
-            source.connect(lowPass);
+            // Connect: Source -> Gain -> Filter -> Analyser (for better sensitivity)
+            source.connect(gainNode);
+            gainNode.connect(lowPass);
             lowPass.connect(analyserRef.current);
 
             micStreamRef.current = stream;
