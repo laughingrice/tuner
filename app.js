@@ -127,7 +127,8 @@ const StrobeBand = ({ speed, direction }) => {
 };
 
 const ChromaticNeedle = ({ cents }) => {
-    const rotation = Math.max(-45, Math.min(45, cents));
+    // Map cents to rotation: ±50 cents = ±45 degrees
+    const rotation = Math.max(-45, Math.min(45, (cents / 50) * 45));
     const isTuned = Math.abs(cents) < 3;
     const color = isTuned ? 'text-green-400' : 'text-red-400';
     
@@ -177,6 +178,92 @@ const PolyphonicDisplay = ({ detectedFreq, refFreq, strings }) => {
                     </div>
                 );
             })}
+        </div>
+    );
+};
+
+const GraphDisplay = ({ frequencyHistory }) => {
+    const canvasRef = useRef(null);
+    const maxCents = 50; // Quarter tone window
+    const centsReferenceLines = [-50, -10, -5, 0, 5, 10, 50];
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        const centerY = height / 2;
+
+        // Clear canvas
+        ctx.fillStyle = '#18181b';
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw reference lines
+        ctx.strokeStyle = '#3f3f46';
+        ctx.lineWidth = 1;
+        ctx.font = '10px monospace';
+        ctx.fillStyle = '#52525b';
+
+        centsReferenceLines.forEach((cents) => {
+            const y = centerY - (cents / maxCents) * (height / 2);
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(width, y);
+            ctx.stroke();
+
+            // Label
+            ctx.fillText(cents !== 0 ? (cents > 0 ? '+' : '') + cents : '0', 2, y - 2);
+        });
+
+        // Highlight ±5 and ±10 cent bands with subtle background
+        [5, 10].forEach((cents) => {
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.05)'; // Green band
+            const y1 = centerY - (cents / maxCents) * (height / 2);
+            const y2 = centerY - (-cents / maxCents) * (height / 2);
+            ctx.fillRect(0, Math.min(y1, y2), width, Math.abs(y2 - y1));
+        });
+
+        // Draw frequency history line
+        if (frequencyHistory.length > 0) {
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            frequencyHistory.forEach((data, idx) => {
+                const x = (idx / Math.max(1, frequencyHistory.length - 1)) * width;
+                const y = centerY - (data.cents / maxCents) * (height / 2);
+
+                if (idx === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+
+            ctx.stroke();
+
+            // Draw current point
+            if (frequencyHistory.length > 0) {
+                const lastData = frequencyHistory[frequencyHistory.length - 1];
+                const x = width;
+                const y = centerY - (lastData.cents / maxCents) * (height / 2);
+
+                ctx.fillStyle = Math.abs(lastData.cents) < 5 ? '#22c55e' : '#ef4444';
+                ctx.beginPath();
+                ctx.arc(x, y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+    }, [frequencyHistory]);
+
+    return (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-800 rounded-lg overflow-hidden">
+            <canvas
+                ref={canvasRef}
+                width={1600}
+                height={300}
+                className="w-full h-full"
+                style={{ display: 'block' }}
+            />
         </div>
     );
 };
@@ -306,6 +393,7 @@ const TunerApp = () => {
     const [modalOpen, setModalOpen] = useState(false);
     const [editingInstrument, setEditingInstrument] = useState(null); 
     const [tuningData, setTuningData] = useState({ note: '--', octave: '', cents: 0, frequency: 0 });
+    const [frequencyHistory, setFrequencyHistory] = useState([]); // For graph mode
 
     // --- REFS ---
     const audioContextRef = useRef(null);
@@ -417,6 +505,13 @@ const TunerApp = () => {
             const cents = 1200 * Math.log2(frequency / perfectFreq);
 
             setTuningData({ note: noteName, octave: octave, cents: cents, frequency: frequency });
+            
+            // Update frequency history for graph mode
+            setFrequencyHistory(prev => {
+                const updated = [...prev, { cents: cents, frequency: frequency }];
+                // Keep last 200 measurements for graph
+                return updated.slice(Math.max(0, updated.length - 200));
+            });
         }
         requestRef.current = requestAnimationFrame(updatePitch);
     };
@@ -461,6 +556,7 @@ const TunerApp = () => {
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
         setIsListening(false);
         setTuningData({ note: '--', octave: '', cents: 0, frequency: 0 });
+        setFrequencyHistory([]);
     };
 
     const toggleMic = () => isListening ? stopMic() : startMic();
@@ -536,11 +632,14 @@ const TunerApp = () => {
                     {mode === 'polyphonic' && (
                         <PolyphonicDisplay detectedFreq={tuningData.frequency} refFreq={refFreq} strings={currentInstrument.strings} />
                     )}
+                    {mode === 'graph' && (
+                        <GraphDisplay frequencyHistory={frequencyHistory} />
+                    )}
                 </div>
             </div>
 
             {/* RIGHT PANEL: Controls */}
-            <div className="flex-none w-full landscape:w-80 bg-zinc-900 border-t landscape:border-t-0 landscape:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20 overflow-y-auto">
+            <div className="flex-none w-full landscape:w-60 bg-zinc-900 border-t landscape:border-t-0 landscape:border-l border-zinc-800 p-4 flex flex-col gap-3 shadow-xl z-20 overflow-y-auto">
                 
                 {/* START BUTTON (Top) */}
                 <div className="mb-2 pb-2 border-b border-zinc-800">
@@ -631,7 +730,7 @@ const TunerApp = () => {
                     <div className="col-span-2 landscape:col-span-1 flex flex-col gap-1">
                         <label className="text-zinc-500 text-[10px] uppercase font-bold">Mode</label>
                         <div className="bg-zinc-950 p-1 rounded-lg border border-zinc-800 flex flex-row landscape:flex-col gap-1">
-                            {['chromatic', 'polyphonic', 'strobe'].map((m) => (
+                            {['chromatic', 'polyphonic', 'strobe', 'graph'].map((m) => (
                                 <button
                                     key={m}
                                     onClick={() => setMode(m)}
